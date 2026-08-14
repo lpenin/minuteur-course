@@ -308,7 +308,10 @@
   // mediaDest, dont le flux alimente <audio id="keepAlive">. C'est cette lecture
   // <audio> (et non l'AudioContext brut) qu'iOS/Android traitent comme une vraie
   // session de lecture, ce qui évite la suspension au verrouillage de l'écran.
-  let ac=null, mediaDest=null, tickTimer=null, nextTick=0, tickCount=0;
+  // `speaking` : le temps d'une annonce vocale, on n'essaie pas de relancer keepAlive
+  // (sinon le scheduler du métronome, qui appelle audio() toutes les 30 ms, l'annule
+  // immédiatement — voir say()).
+  let ac=null, mediaDest=null, tickTimer=null, nextTick=0, tickCount=0, speaking=false;
   function audio(){
     if(!ac){
       ac = new (window.AudioContext||window.webkitAudioContext)();
@@ -316,7 +319,7 @@
       $('keepAlive').srcObject = mediaDest.stream;
     }
     if(ac.state==='suspended') ac.resume();
-    if($('keepAlive').paused) $('keepAlive').play().catch(()=>{});
+    if(!speaking && $('keepAlive').paused) $('keepAlive').play().catch(()=>{});
     return ac;
   }
   function blip(t, freq, dur, gain){
@@ -359,6 +362,14 @@
     const u=new SpeechSynthesisUtterance(txt);
     u.lang='fr-FR'; u.rate=1.05; u.pitch=1;
     if(frVoice) u.voice=frVoice;
+    // Sur Android Chrome, le flux keepAlive tourne en continu et empêche la synthèse
+    // vocale système de sortir : on le met en pause le temps de l'annonce, puis on
+    // le relance. `speaking` bloque toute reprise intempestive par audio() entre-temps.
+    const el=$('keepAlive');
+    const wasPlaying = !!el.srcObject && !el.paused;
+    if(wasPlaying){ speaking=true; el.pause(); }
+    const resume=()=>{ speaking=false; if(wasPlaying) el.play().catch(()=>{}); };
+    u.onend=resume; u.onerror=resume;
     speechSynthesis.speak(u);
   }
   function buzz(p){ if(navigator.vibrate) try{navigator.vibrate(p);}catch(e){} }
