@@ -457,7 +457,10 @@
 
   function refresh(){
     const c=readCfg();
-    const total = c.warm + c.n*c.run + (c.n>1||c.walk? c.n*c.walk:0) + c.cool;
+    // Doit refléter exactement build() : pas de marche après la toute dernière série
+    // s'il y a un retour au calme (sinon le total affiché ici est faux de +1 marche).
+    const walkBlocks = c.n - 1 + (c.cool===0 ? 1 : 0);
+    const total = c.warm + c.n*c.run + walkBlocks*c.walk + c.cool;
     $('summary').textContent =
       'Séance totale ' + human(total) + ' · dont ' + human(c.n*c.run) + ' courus · métronome à ' + c.cad + ' pas/min.';
   }
