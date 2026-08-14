@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minuteur de reprise</title>
+
+<!-- PWA : installable + hors-ligne -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0E1114">
+<link rel="icon" href="icon-192.png">
+<!-- iOS ne lit pas le manifest pour l'écran d'accueil : ces balises sont son équivalent -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Minuteur">
+
+<style>
+  :root{
+    --gun:#0E1114;
+    --gun-2:#171C22;
+    --dial:#E8E4DA;
+    --dial-2:#CFC9BC;
+    --ink:#0E1114;
+    --steel:#2B4C8C;
+    --enamel:#1F6F5C;
+    --red:#A32E2E;
+    --muted:#8A8F98;
+    --phase:var(--steel);
+    --radius:2px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--gun);color:var(--dial)}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-variant-numeric:tabular-nums;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding:18px 16px calc(24px + env(safe-area-inset-bottom));
+    max-width:520px;margin:0 auto;
+  }
+  .eyebrow{
+    font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);
+    margin:0 0 4px;
+  }
+  h1{font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0 0 18px}
+  h1 span{color:var(--muted);font-weight:400}
+
+  /* ---------- réglages ---------- */
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}
+  .chip{
+    background:var(--gun-2);border:1px solid #262C34;color:var(--dial-2);
+    font-size:11.5px;letter-spacing:.03em;padding:7px 10px;border-radius:var(--radius);
+    cursor:pointer;font-family:inherit;
+  }
+  .chip:hover{border-color:#3A424C}
+  .chip[aria-pressed="true"]{background:var(--dial);color:var(--ink);border-color:var(--dial);font-weight:600}
+
+  .field{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:13px 0;border-bottom:1px solid #1E242B;gap:12px;
+  }
+  .field .lab{font-size:13.5px}
+  .field .lab small{display:block;color:var(--muted);font-size:11px;margin-top:2px;letter-spacing:.01em}
+  .stepper{display:flex;align-items:center;gap:2px;flex-shrink:0}
+  .stepper button{
+    width:34px;height:34px;background:var(--gun-2);border:1px solid #262C34;color:var(--dial);
+    font-size:17px;line-height:1;cursor:pointer;border-radius:var(--radius);font-family:inherit;
+  }
+  .stepper button:active{background:#232A32}
+  .stepper input{
+    width:52px;height:34px;text-align:center;background:transparent;border:none;
+    color:var(--dial);font-size:17px;font-family:inherit;font-variant-numeric:tabular-nums;
+  }
+  .stepper input:focus{outline:2px solid var(--steel);outline-offset:1px}
+  .unit{font-size:11px;color:var(--muted);width:30px}
+  .mmss{display:flex;align-items:center;gap:8px}
+
+  .tap{
+    margin:18px 0 22px;padding:14px;background:var(--gun-2);border:1px solid #262C34;
+    border-radius:var(--radius);
+  }
+  .tap-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .tap-head b{font-size:13px;font-weight:600}
+  .tap-head span{font-size:11px;color:var(--muted)}
+  .tap-btns{display:flex;gap:8px;margin-top:11px}
+  .tap-btns button{
+    flex:1;padding:11px;background:transparent;border:1px solid #333B45;color:var(--dial-2);
+    font-size:12.5px;border-radius:var(--radius);cursor:pointer;font-family:inherit;
+  }
+  .tap-btns button:active{background:#232A32}
+  .tap-out{margin-top:10px;font-size:12px;color:var(--muted);min-height:16px}
+  .tap-out b{color:var(--dial);font-variant-numeric:tabular-nums}
+
+  .go{
+    width:100%;padding:17px;margin-top:6px;background:var(--dial);color:var(--ink);
+    border:none;border-radius:var(--radius);font-size:15px;font-weight:600;letter-spacing:.02em;
+    cursor:pointer;font-family:inherit;
+  }
+  .go:active{background:var(--dial-2)}
+  .hint{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
+
+  /* ---------- séance ---------- */
+  .dialwrap{position:relative;margin:6px auto 0;width:min(300px,78vw)}
+  svg{display:block;width:100%;height:auto}
+  .track{fill:none;stroke:#1E242B;stroke-width:7}
+  .prog{fill:none;stroke:var(--phase);stroke-width:7;stroke-linecap:butt;
+        transform:rotate(-90deg);transform-origin:120px 120px;transition:stroke .3s}
+  .pip{fill:#2A313A}
+  .pip.done{fill:var(--dial-2)}
+  .pip.now{fill:var(--phase)}
+  .center{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+  }
+  .ph{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--phase);
+      font-weight:700;transition:color .3s}
+  .clock{font-size:clamp(48px,17vw,64px);font-weight:200;letter-spacing:-.03em;line-height:1.05;margin:3px 0 1px}
+  .next{font-size:11px;color:var(--muted);letter-spacing:.02em}
+  .meta{
+    display:flex;justify-content:space-between;margin:22px 2px 0;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)
+  }
+  .meta b{display:block;font-size:17px;font-weight:500;letter-spacing:0;color:var(--dial);
+          text-transform:none;margin-top:4px}
+  .ctrl{display:flex;gap:8px;margin-top:24px}
+  .ctrl button{
+    flex:1;padding:15px;border-radius:var(--radius);font-size:14px;font-weight:600;
+    cursor:pointer;font-family:inherit;border:1px solid #333B45;background:var(--gun-2);color:var(--dial);
+  }
+  .ctrl button.pause{background:var(--dial);color:var(--ink);border-color:var(--dial)}
+  .metro{
+    display:flex;align-items:center;gap:12px;margin-top:20px;padding-top:16px;
+    border-top:1px solid #1E242B;font-size:12px;color:var(--muted)
+  }
+  .metro label{display:flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap}
+  .metro input[type=range]{flex:1;accent-color:var(--dial);min-width:60px}
+  .metro input[type=checkbox]{accent-color:var(--dial);width:16px;height:16px}
+  .beat{width:8px;height:8px;border-radius:50%;background:#2A313A;flex-shrink:0}
+  .beat.on{background:var(--phase)}
+
+  .done-wrap{text-align:center;padding:28px 0 8px}
+  .done-wrap .big{font-size:26px;font-weight:300;letter-spacing:-.02em;margin:0 0 6px}
+  .done-wrap p{color:var(--muted);font-size:13px;margin:0 0 22px;line-height:1.6}
+  [hidden]{display:none !important}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+
+<p class="eyebrow">Reprise 10 semaines</p>
+<h1>Minuteur d'intervalles <span>+ métronome</span></h1>
+
+<!-- ======== RÉGLAGES ======== -->
+<section id="setup">
+  <div class="presets" id="presets"></div>
+
+  <div class="field">
+    <div class="lab">Cadence<small>pas par minute, pendant la course</small></div>
+    <div class="stepper">
+      <button type="button" data-step="cad" data-d="-1">–</button>
+      <input id="cad" type="number" inputmode="numeric" value="172" min="120" max="220">
+      <button type="button" data-step="cad" data-d="1">+</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="lab">Course<small>par série</small></div>
+    <div class="mmss">
+      <div class="stepper">
+        <button type="button" data-step="runM" data-d="-1">–</button>
+        <input id="runM" type="number" inputmode="numeric" value="2" min="0" max="90">
+        <button type="button" data-step="runM" data-d="1">+</button>
+      </div><span class="unit">min</span>
+      <div class="stepper">
+        <button type="button" data-step="runS" data-d="-15">–</button>
+        <input id="runS" type="number" inputmode="numeric" value="0" min="0" max="59">
+        <button type="button" data-step="runS" data-d="15">+</button>
+      </div><span class="unit">s</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="lab">Marche<small>entre les séries</small></div>
+    <div class="mmss">
+      <div class="stepper">
+        <button type="button" data-step="walkM" data-d="-1">–</button>
+        <input id="walkM" type="number" inputmode="numeric" value="2" min="0" max="30">
+        <button type="button" data-step="walkM" data-d="1">+</button>
+      </div><span class="unit">min</span>
+      <div class="stepper">
+        <button type="button" data-step="walkS" data-d="-15">–</button>
+        <input id="walkS" type="number" inputmode="numeric" value="0" min="0" max="59">
+        <button type="button" data-step="walkS" data-d="15">+</button>
+      </div><span class="unit">s</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="lab">Séries</div>
+    <div class="stepper">
+      <button type="button" data-step="series" data-d="-1">–</button>
+      <input id="series" type="number" inputmode="numeric" value="5" min="1" max="30">
+      <button type="button" data-step="series" data-d="1">+</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="lab">Échauffement<small>marche vive avant</small></div>
+    <div class="mmss">
+      <div class="stepper">
+        <button type="button" data-step="warm" data-d="-1">–</button>
+        <input id="warm" type="number" inputmode="numeric" value="5" min="0" max="20">
+        <button type="button" data-step="warm" data-d="1">+</button>
+      </div><span class="unit">min</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="lab">Retour au calme<small>marche vive après</small></div>
+    <div class="mmss">
+      <div class="stepper">
+        <button type="button" data-step="cool" data-d="-1">–</button>
+        <input id="cool" type="number" inputmode="numeric" value="15" min="0" max="40">
+        <button type="button" data-step="cool" data-d="1">+</button>
+      </div><span class="unit">min</span>
+    </div>
+  </div>
+
+  <div class="tap">
+    <div class="tap-head">
+      <b>Mesurer ta cadence actuelle</b>
+      <span id="tapTotal">0 appui</span>
+    </div>
+    <div class="tap-btns">
+      <button type="button" id="tapBtn">Taper à chaque appui</button>
+      <button type="button" id="listenBtn">Écouter la cadence réglée</button>
+    </div>
+    <div class="tap-out" id="tapOut">Tape 10 fois de suite, un appui de pied par tape.</div>
+  </div>
+
+  <button class="go" id="startBtn">Démarrer la séance</button>
+  <p class="hint" id="summary"></p>
+</section>
+
+<!-- ======== SÉANCE ======== -->
+<section id="run" hidden>
+  <div class="dialwrap">
+    <svg viewBox="0 0 240 240" aria-hidden="true">
+      <circle class="track" cx="120" cy="120" r="98"></circle>
+      <circle class="prog" id="prog" cx="120" cy="120" r="98"></circle>
+      <g id="pips"></g>
+    </svg>
+    <div class="center">
+      <div class="ph" id="phase">Échauffement</div>
+      <div class="clock" id="clock">05:00</div>
+      <div class="next" id="next">puis course 2:00</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div>Série<b id="serieOut">– / 5</b></div>
+    <div style="text-align:right">Fin dans<b id="totalOut">–</b></div>
+  </div>
+
+  <div class="ctrl">
+    <button type="button" class="pause" id="pauseBtn">Pause</button>
+    <button type="button" id="stopBtn">Arrêter</button>
+  </div>
+
+  <div class="metro">
+    <span class="beat" id="beat"></span>
+    <label><input type="checkbox" id="metroOn" checked> Métronome</label>
+    <input type="range" id="vol" min="0" max="100" value="55" aria-label="Volume du métronome">
+    <label><input type="checkbox" id="metroWalk"> aussi en marche</label>
+  </div>
+
+  <!-- DEBUG TEST — À SUPPRIMER avant usage réel. Sert juste à avancer le temps pour tester
+       sans attendre les durées réelles des phases. -->
+  <div class="tap" style="margin-top:16px;border-color:#5A3A1F">
+    <div class="tap-head"><b>⚠ Debug — à retirer</b></div>
+    <div class="tap-btns">
+      <button type="button" data-ff="10">+10 s</button>
+      <button type="button" data-ff="60">+60 s</button>
+      <button type="button" id="skipPhase">Phase suivante</button>
+    </div>
+  </div>
+  <!-- /DEBUG TEST -->
+</section>
+
+<audio id="keepAlive" playsinline style="display:none"></audio>
+
+<!-- ======== FIN ======== -->
+<section id="done" hidden>
+  <div class="done-wrap">
+    <p class="big">Séance terminée</p>
+    <p id="doneTxt"></p>
+    <button class="go" id="againBtn">Nouvelle séance</button>
+  </div>
+  <p class="hint">Note ta séance dans le carnet du plan : douleur sur 10, et surtout comment tu te sens demain matin.</p>
+</section>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const PRESETS = [
+    {k:'S1 · S2', r:120, w:120, n:5},
+    {k:'S3',      r:180, w:120, n:5},
+    {k:'S4',      r:300, w:120, n:4},
+    {k:'S5',      r:480, w:120, n:3},
+    {k:'S6',      r:720, w:120, n:2},
+    {k:'S7',      r:1200,w:0,   n:1},
+    {k:'S8',      r:1500,w:0,   n:1},
+    {k:'S9 · S10',r:1800,w:0,   n:1}
+  ];
+
+  /* ---------- audio ---------- */
+  // Le son ne va jamais directement sur ac.destination : il est routé vers
+  // mediaDest, dont le flux alimente <audio id="keepAlive">. C'est cette lecture
+  // <audio> (et non l'AudioContext brut) qu'iOS/Android traitent comme une vraie
+  // session de lecture, ce qui évite la suspension au verrouillage de l'écran.
+  let ac=null, mediaDest=null, tickTimer=null, nextTick=0, tickCount=0;
+  function audio(){
+    if(!ac){
+      ac = new (window.AudioContext||window.webkitAudioContext)();
+      mediaDest = ac.createMediaStreamDestination();
+      $('keepAlive').srcObject = mediaDest.stream;
+    }
+    if(ac.state==='suspended') ac.resume();
+    if($('keepAlive').paused) $('keepAlive').play().catch(()=>{});
+    return ac;
+  }
+  function blip(t, freq, dur, gain){
+    const c=audio(), o=c.createOscillator(), g=c.createGain();
+    o.type='sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(gain,t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(mediaDest); o.start(t); o.stop(t+dur+0.02);
+  }
+  function beepNow(freq,dur,gain){ blip(audio().currentTime+0.01, freq, dur||0.09, gain==null?0.35:gain); }
+
+  function startMetro(){
+    stopMetro();
+    nextTick = audio().currentTime + 0.08; tickCount = 0;
+    tickTimer = setInterval(()=>{
+      const c=audio(), spb = 60/clamp(+$('cad').value||170,120,220), v=(+$('vol').value)/100;
+      while(nextTick < c.currentTime + 0.18){
+        const accent = tickCount % 2 === 0;
+        blip(nextTick, accent?1500:1050, 0.035, (accent?0.5:0.3)*v);
+        if(accent) flashBeat(nextTick - c.currentTime);
+        nextTick += spb; tickCount++;
+      }
+    },30);
+  }
+  function stopMetro(){ if(tickTimer){clearInterval(tickTimer); tickTimer=null;} $('beat').classList.remove('on'); }
+  function flashBeat(delay){
+    setTimeout(()=>{const b=$('beat'); b.classList.add('on'); setTimeout(()=>b.classList.remove('on'),90);}, Math.max(0,delay*1000));
+  }
+
+  /* ---------- voix ---------- */
+  let frVoice=null;
+  function pickVoice(){
+    const v=speechSynthesis.getVoices();
+    frVoice = v.find(x=>/^fr/i.test(x.lang)) || null;
+  }
+  if('speechSynthesis' in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+  function say(txt){
+    if(!('speechSynthesis' in window)) return;
+    const u=new SpeechSynthesisUtterance(txt);
+    u.lang='fr-FR'; u.rate=1.05; u.pitch=1;
+    if(frVoice) u.voice=frVoice;
+    speechSynthesis.speak(u);
+  }
+  function buzz(p){ if(navigator.vibrate) try{navigator.vibrate(p);}catch(e){} }
+
+  /* ---------- media session (verrouillage écran) ---------- */
+  // Déclare la séance comme lecture audio active auprès de l'OS (écran verrouillé,
+  // contrôles lock-screen) et relie play/pause/stop aux commandes existantes.
+  function setupMediaSession(){
+    if(!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({title:'Minuteur de reprise', artist:'Séance en cours'});
+    navigator.mediaSession.playbackState = 'playing';
+    navigator.mediaSession.setActionHandler('pause', ()=>{ if(!paused) $('pauseBtn').click(); });
+    navigator.mediaSession.setActionHandler('play', ()=>{ if(paused) $('pauseBtn').click(); });
+    navigator.mediaSession.setActionHandler('stop', ()=>$('stopBtn').click());
+  }
+  function teardownMediaSession(){
+    if(!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = 'none';
+    navigator.mediaSession.metadata = null;
+    ['pause','play','stop'].forEach(a=>{ try{navigator.mediaSession.setActionHandler(a,null);}catch(e){} });
+  }
+
+  /* ---------- utilitaires ---------- */
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  function mmss(s){ s=Math.max(0,Math.ceil(s)); const m=Math.floor(s/60); return String(m).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+  function human(s){ s=Math.max(0,Math.round(s)); const m=Math.floor(s/60), r=s%60;
+    if(m&&r) return m+' min '+r+' s'; if(m) return m+' min'; return r+' s'; }
+  function readCfg(){
+    return {
+      cad: clamp(+$('cad').value||170,120,220),
+      run: clamp((+$('runM').value||0)*60 + (+$('runS').value||0),5,5400),
+      walk: clamp((+$('walkM').value||0)*60 + (+$('walkS').value||0),0,3600),
+      n: clamp(+$('series').value||1,1,30),
+      warm: clamp(+$('warm').value||0,0,20)*60,
+      cool: clamp(+$('cool').value||0,0,40)*60
+    };
+  }
+
+  /* ---------- réglages : presets & steppers ---------- */
+  const pw=$('presets');
+  PRESETS.forEach((p,i)=>{
+    const b=document.createElement('button');
+    b.className='chip'; b.type='button'; b.textContent=p.k; b.setAttribute('aria-pressed','false');
+    b.onclick=()=>{
+      $('runM').value=Math.floor(p.r/60); $('runS').value=p.r%60;
+      $('walkM').value=Math.floor(p.w/60); $('walkS').value=p.w%60;
+      $('series').value=p.n;
+      [...pw.children].forEach((c,j)=>c.setAttribute('aria-pressed', j===i?'true':'false'));
+      refresh();
+    };
+    pw.appendChild(b);
+  });
+  document.querySelectorAll('[data-step]').forEach(b=>{
+    b.onclick=()=>{
+      const el=$(b.dataset.step), d=+b.dataset.d;
+      let v=(+el.value||0)+d;
+      const mn=+el.min, mx=+el.max;
+      if(el.id==='runS'||el.id==='walkS'){
+        if(v>59){ const m=$(el.id==='runS'?'runM':'walkM'); m.value=(+m.value||0)+1; v=0; }
+        if(v<0){ const m=$(el.id==='runS'?'runM':'walkM'); if((+m.value||0)>0){ m.value=(+m.value)-1; v=45; } else v=0; }
+      } else v=clamp(v,mn,mx);
+      el.value=v;
+      [...pw.children].forEach(c=>c.setAttribute('aria-pressed','false'));
+      refresh();
+    };
+  });
+  document.querySelectorAll('#setup input').forEach(i=>i.oninput=refresh);
+
+  function refresh(){
+    const c=readCfg();
+    const total = c.warm + c.n*c.run + (c.n>1||c.walk? c.n*c.walk:0) + c.cool;
+    $('summary').textContent =
+      'Séance totale ' + human(total) + ' · dont ' + human(c.n*c.run) + ' courus · métronome à ' + c.cad + ' pas/min.';
+  }
+
+  /* ---------- tap tempo ---------- */
+  let taps=[];
+  $('tapBtn').onclick=()=>{
+    const now=performance.now();
+    if(taps.length && now-taps[taps.length-1]>3000) taps=[];
+    taps.push(now); beepNow(900,0.04,0.25);
+    $('tapTotal').textContent = taps.length + (taps.length>1?' appuis':' appui');
+    if(taps.length>=4){
+      const spm = 60000*(taps.length-1)/(taps[taps.length-1]-taps[0]);
+      const lo=Math.round(spm*1.05), hi=Math.round(spm*1.10);
+      $('tapOut').innerHTML = 'Mesuré : <b>'+Math.round(spm)+'</b> pas/min → cible <b>'+lo+' à '+hi+'</b>. '+
+        '<button type="button" id="useIt" style="background:none;border:none;color:var(--dial);text-decoration:underline;font:inherit;font-size:12px;cursor:pointer;padding:0">Utiliser '+hi+'</button>';
+      $('useIt').onclick=()=>{ $('cad').value=hi; refresh(); $('tapOut').textContent='Cadence réglée sur '+hi+' pas/min.'; };
+    } else if(taps.length>1){
+      $('tapOut').textContent='Continue, encore quelques appuis…';
+    }
+  };
+  let listening=false;
+  $('listenBtn').onclick=()=>{
+    if(listening){ stopMetro(); listening=false; $('listenBtn').textContent='Écouter la cadence réglée'; return; }
+    startMetro(); listening=true; $('listenBtn').textContent='Arrêter l\u2019écoute';
+    setTimeout(()=>{ if(listening){ stopMetro(); listening=false; $('listenBtn').textContent='Écouter la cadence réglée'; } },12000);
+  };
+
+  /* ---------- moteur de séance ---------- */
+  let plan=[], idx=0, phEnd=0, paused=false, pausedAt=0, loop=null, said={}, wake=null;
+  const PH={
+    warm:{label:'Échauffement', color:'var(--steel)', voice:'Échauffement, marche vive'},
+    run: {label:'Course',       color:'var(--enamel)',voice:'Début de course'},
+    walk:{label:'Marche',       color:'var(--steel)', voice:'Début de marche'},
+    cool:{label:'Retour au calme',color:'var(--steel)',voice:'Retour au calme, marche vive'}
+  };
+
+  function build(c){
+    const p=[];
+    if(c.warm) p.push({k:'warm',d:c.warm});
+    for(let i=1;i<=c.n;i++){
+      p.push({k:'run',d:c.run,s:i});
+      if(c.walk && (i<c.n || c.cool===0)) p.push({k:'walk',d:c.walk,s:i});
+    }
+    if(c.cool) p.push({k:'cool',d:c.cool});
+    return p;
+  }
+  function drawPips(n){
+    const g=$('pips'); g.innerHTML='';
+    if(n<2||n>24) return;
+    for(let i=0;i<n;i++){
+      const a=(i/n)*2*Math.PI - Math.PI/2;
+      const cx=120+Math.cos(a)*82, cy=120+Math.sin(a)*82;
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',cx.toFixed(1)); c.setAttribute('cy',cy.toFixed(1)); c.setAttribute('r','3.4');
+      c.setAttribute('class','pip'); c.dataset.i=i; g.appendChild(c);
+    }
+  }
+  const R=98, C=2*Math.PI*R;
+  $('prog').style.strokeDasharray=C.toFixed(1);
+
+  async function start(){
+    const c=readCfg();
+    plan=build(c); if(!plan.length) return;
+    audio(); say('\u200B');                 // débloque la voix sur iOS
+    drawPips(c.n);
+    $('setup').hidden=true; $('done').hidden=true; $('run').hidden=false;
+    if(listening){ stopMetro(); listening=false; $('listenBtn').textContent='Écouter la cadence réglée'; }
+    idx=-1; paused=false; $('pauseBtn').textContent='Pause'; $('pauseBtn').classList.add('pause');
+    try{ if('wakeLock' in navigator) wake=await navigator.wakeLock.request('screen'); }catch(e){}
+    setupMediaSession();
+    nextPhase();
+    loop=setInterval(tick,100);
+  }
+  function nextPhase(){
+    idx++;
+    if(idx>=plan.length) return finish();
+    const p=plan[idx], meta=PH[p.k];
+    said={};
+    phEnd = performance.now() + p.d*1000;
+    document.documentElement.style.setProperty('--phase', meta.color);
+    $('phase').textContent = meta.label;
+    const cfg=readCfg();
+    $('serieOut').textContent = (p.s? p.s : '–') + ' / ' + cfg.n;
+    const nx=plan[idx+1];
+    $('next').textContent = nx ? 'puis ' + PH[nx.k].label.toLowerCase() + ' ' + mmss(nx.d).replace(/^0/,'') : 'dernier bloc';
+    [...$('pips').children].forEach(c=>{
+      const i=+c.dataset.i; c.classList.toggle('done', p.s? i < p.s-1 : false);
+      c.classList.toggle('now', p.s? i === p.s-1 : false);
+    });
+    // annonce
+    let txt = meta.voice;
+    if(p.k==='run'){ const left=cfg.n - p.s; txt += left>0 ? '. Plus que '+left+(left>1?' séries':' série')+' après celle-ci' : '. Dernière série'; }
+    if(p.k==='walk'){ const left=cfg.n - p.s; if(left>0) txt += '. Plus que '+left+(left>1?' séries':' série'); }
+    beepNow(p.k==='run'?1400:700, 0.14, 0.4);
+    setTimeout(()=>say(txt),160);
+    buzz(p.k==='run'?[90,60,90]:[260]);
+    applyMetro();
+    render();
+  }
+  function applyMetro(){
+    const p=plan[idx]; if(!p) return stopMetro();
+    const want = $('metroOn').checked && (p.k==='run' || ($('metroWalk').checked));
+    if(want && !paused) startMetro(); else stopMetro();
+  }
+  function tick(){
+    if(paused) return;
+    const left=(phEnd-performance.now())/1000;
+    if(left<=0){ nextPhase(); return; }
+    [3,2,1].forEach(n=>{
+      if(!said[n] && left<=n && left>n-1){
+        said[n]=true;
+        blip(audio().currentTime+0.01, 800, 0.07, 0.3);
+        say(n===3?'trois':n===2?'deux':'un');
+      }
+    });
+    render(left);
+  }
+  function render(left){
+    const p=plan[idx]; if(!p) return;
+    if(left==null) left=(phEnd-performance.now())/1000;
+    $('clock').textContent = mmss(left);
+    const frac = clamp(1 - left/p.d, 0, 1);
+    $('prog').style.strokeDashoffset = (C*(1-frac)).toFixed(1);
+    let rest=left; for(let i=idx+1;i<plan.length;i++) rest+=plan[i].d;
+    $('totalOut').textContent = mmss(rest);
+  }
+  function finish(){
+    clearInterval(loop); loop=null; stopMetro();
+    if(wake){ try{wake.release();}catch(e){} wake=null; }
+    const c=readCfg();
+    $('run').hidden=true; $('done').hidden=false;
+    $('doneTxt').textContent = c.n+' série'+(c.n>1?'s':'')+' · '+human(c.n*c.run)+' courus · cadence '+c.cad+' pas/min.';
+    buzz([160,90,160,90,300]);
+    beepNow(1200,0.16,0.4); setTimeout(()=>beepNow(1600,0.22,0.4),190);
+    setTimeout(()=>say('Séance terminée. Bien joué.'),420);
+    teardownMediaSession();
+    setTimeout(()=>{ const el=$('keepAlive'); if(!el.paused) el.pause(); },700);
+  }
+  function stopAll(){
+    clearInterval(loop); loop=null; stopMetro();
+    if('speechSynthesis' in window) speechSynthesis.cancel();
+    if(wake){ try{wake.release();}catch(e){} wake=null; }
+    $('run').hidden=true; $('done').hidden=true; $('setup').hidden=false;
+    teardownMediaSession();
+    const el=$('keepAlive'); if(!el.paused) el.pause();
+  }
+
+  $('startBtn').onclick=start;
+  $('againBtn').onclick=()=>{ $('done').hidden=true; $('setup').hidden=false; };
+  $('stopBtn').onclick=stopAll;
+  $('pauseBtn').onclick=()=>{
+    paused=!paused;
+    if(paused){
+      pausedAt=performance.now(); stopMetro();
+      if('speechSynthesis' in window) speechSynthesis.cancel();
+      $('pauseBtn').textContent='Reprendre'; $('pauseBtn').classList.remove('pause');
+      $('phase').textContent='En pause';
+      if('mediaSession' in navigator) navigator.mediaSession.playbackState='paused';
+    }else{
+      phEnd += performance.now()-pausedAt;
+      $('pauseBtn').textContent='Pause'; $('pauseBtn').classList.add('pause');
+      $('phase').textContent=PH[plan[idx].k].label;
+      applyMetro();
+      if('mediaSession' in navigator) navigator.mediaSession.playbackState='playing';
+    }
+  };
+  $('metroOn').onchange=applyMetro; $('metroWalk').onchange=applyMetro;
+  $('cad').addEventListener('input',()=>{ if(tickTimer){ startMetro(); } });
+
+  /* DEBUG TEST — À SUPPRIMER avant usage réel (voir bouton correspondant dans le HTML) */
+  document.querySelectorAll('[data-ff]').forEach(b=>{
+    b.onclick=()=>{
+      if(!plan.length || idx<0 || idx>=plan.length) return;
+      phEnd -= (+b.dataset.ff)*1000;
+      tick();
+    };
+  });
+  $('skipPhase').onclick=()=>{
+    if(!plan.length || idx<0 || idx>=plan.length) return;
+    phEnd = performance.now();
+    tick();
+  };
+  /* /DEBUG TEST */
+
+  [...pw.children][0].setAttribute('aria-pressed','true');
+  refresh();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(()=>{});
+    });
+  }
+})();
+</script>
+</body>
+</html>
