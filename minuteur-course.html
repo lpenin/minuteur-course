@@ -274,18 +274,6 @@
     <input type="range" id="vol" min="0" max="100" value="55" aria-label="Volume du métronome">
     <label><input type="checkbox" id="metroWalk"> aussi en marche</label>
   </div>
-
-  <!-- DEBUG TEST — À SUPPRIMER avant usage réel. Sert juste à avancer le temps pour tester
-       sans attendre les durées réelles des phases. -->
-  <div class="tap" style="margin-top:16px;border-color:#5A3A1F">
-    <div class="tap-head"><b>⚠ Debug — à retirer</b></div>
-    <div class="tap-btns">
-      <button type="button" data-ff="10">+10 s</button>
-      <button type="button" data-ff="60">+60 s</button>
-      <button type="button" id="skipPhase">Phase suivante</button>
-    </div>
-  </div>
-  <!-- /DEBUG TEST -->
 </section>
 
 <audio id="keepAlive" playsinline style="display:none"></audio>
@@ -611,21 +599,6 @@
   };
   $('metroOn').onchange=applyMetro; $('metroWalk').onchange=applyMetro;
   $('cad').addEventListener('input',()=>{ if(tickTimer){ startMetro(); } });
-
-  /* DEBUG TEST — À SUPPRIMER avant usage réel (voir bouton correspondant dans le HTML) */
-  document.querySelectorAll('[data-ff]').forEach(b=>{
-    b.onclick=()=>{
-      if(!plan.length || idx<0 || idx>=plan.length) return;
-      phEnd -= (+b.dataset.ff)*1000;
-      tick();
-    };
-  });
-  $('skipPhase').onclick=()=>{
-    if(!plan.length || idx<0 || idx>=plan.length) return;
-    phEnd = performance.now();
-    tick();
-  };
-  /* /DEBUG TEST */
 
   [...pw.children][0].setAttribute('aria-pressed','true');
   refresh();
