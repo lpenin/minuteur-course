@@ -337,6 +337,10 @@
     nextTick = audio().currentTime + 0.08; tickCount = 0;
     tickTimer = setInterval(()=>{
       const c=audio(), spb = 60/clamp(+$('cad').value||170,120,220), v=(+$('vol').value)/100;
+      // Resync après un gel long (écran verrouillé) : sans ça, `nextTick` resterait très
+      // en retard et la boucle ci-dessous rejouerait d'un coup tous les clics manqués —
+      // une rafale au lieu d'un tempo régulier.
+      if(nextTick < c.currentTime - 1) nextTick = c.currentTime + 0.08;
       while(nextTick < c.currentTime + 0.18){
         const accent = tickCount % 2 === 0;
         blip(nextTick, accent?1500:1050, 0.035, (accent?0.5:0.3)*v);
@@ -516,11 +520,23 @@
     loop=setInterval(tick,100);
   }
   function nextPhase(){
+    // On chaîne sur l'échéance absolue de la phase qu'on quitte (pas sur "maintenant") :
+    // si le téléphone a été mis en veille longtemps (écran verrouillé), `tick()` peut
+    // n'être rappelé qu'au réveil, bien après l'heure théorique de fin de phase. Repartir
+    // de `performance.now()` ferait alors redémarrer la phase suivante à zéro pile au
+    // déverrouillage — la séance s'allongerait invisiblement de toute la durée du gel.
+    // On rattrape ici, en silence (pas de bip/voix), les phases entièrement écoulées
+    // pendant le gel, jusqu'à retomber sur celle réellement en cours.
+    let base = idx>=0 ? phEnd : performance.now();
     idx++;
+    while(idx<plan.length && base + plan[idx].d*1000 <= performance.now()){
+      base += plan[idx].d*1000;
+      idx++;
+    }
     if(idx>=plan.length) return finish();
+    phEnd = base + plan[idx].d*1000;
     const p=plan[idx], meta=PH[p.k];
     said={};
-    phEnd = performance.now() + p.d*1000;
     document.documentElement.style.setProperty('--phase', meta.color);
     $('phase').textContent = meta.label;
     const cfg=readCfg();
@@ -610,6 +626,15 @@
   };
   $('metroOn').onchange=applyMetro; $('metroWalk').onchange=applyMetro;
   $('cad').addEventListener('input',()=>{ if(tickTimer){ startMetro(); } });
+
+  // Au réveil (déverrouillage), on retraite tout de suite plutôt que d'attendre le
+  // prochain setInterval (potentiellement retardé) : rattrapage de phase immédiat, et
+  // resync du métronome si celui-ci tournait.
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden || !loop || paused) return;
+    tick();
+    if(tickTimer) startMetro();
+  });
 
   [...pw.children][0].setAttribute('aria-pressed','true');
   refresh();
