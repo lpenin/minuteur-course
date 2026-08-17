@@ -293,6 +293,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const PRESETS = [
+    {k:'S0',      r:60,  w:120, n:6},
     {k:'S1 · S2', r:120, w:120, n:5},
     {k:'S3',      r:180, w:120, n:5},
     {k:'S4',      r:300, w:120, n:4},
@@ -653,8 +654,9 @@
     if(tickTimer) startMetro();
   });
 
-  [...pw.children][0].setAttribute('aria-pressed','true');
-  refresh();
+  // Applique vraiment les valeurs du premier preset (pas juste le surligner) : sinon les
+  // champs affichés au chargement ne correspondent pas au preset marqué actif.
+  pw.children[0].click();
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', ()=>{
